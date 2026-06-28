@@ -1,2 +1,0 @@
-[2026-06-28 13:51:09,825][httpx][INFO] - HTTP Request: POST http://localhost:8080/v1/chat/completions "HTTP/1.1 200 OK"
-[2026-06-28 13:51:26,974][httpx][INFO] - HTTP Request: POST http://localhost:8080/v1/chat/completions "HTTP/1.1 200 OK"
