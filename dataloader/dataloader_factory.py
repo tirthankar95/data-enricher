@@ -3,10 +3,10 @@ from abc import ABC, abstractmethod
 
 class DataLoader(ABC):
     @abstractmethod
-    def load_data(self):
+    def iterate(self):
         pass
-    def impute(self, new_data: str):
-        pass 
+    def impute(self, metadata: dict, new_data: str):
+        pass
 
 
 class DataFactoryRegistry:

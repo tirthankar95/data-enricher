@@ -1,7 +1,6 @@
 from dataloader.dataloader_factory import DataLoader, register
 from pathlib import Path
 import pandas as pd
-import time
 
 @register("grid-puzzle")
 class PuzzleDataLoader(DataLoader):
@@ -10,16 +9,30 @@ class PuzzleDataLoader(DataLoader):
         self.csv_path = Path(__file__).parent.parent / 'data' / 'grid-puzzles.csv'
         self.df = pd.read_csv(self.csv_path)
     
-    def load_data(self) -> pd.DataFrame:
-        df_shuffle = self.df.sample(frac = 1, random_state = int(time.time()))
-        self.grid = df_shuffle.iloc[0]['Grid']
-        self.difficulty = df_shuffle.iloc[0]['Difficulty']
-        return df_shuffle.iloc[0]['Puzzle']
+    def iterate(self):
+        for _, row in self.df.iterrows():
+            '''
+            Skip rows where the 'Story' column is empty; 
+            because these are synthetically generated via LLMs
+            '''
+            if row['Story'] == "": 
+                continue
+            yield {
+                "metadata": {
+                    "Grid": row['Grid'],
+                    "Difficulty": row['Difficulty'],
+                    "Story": row['Story'],
+                    "Clues": row['Clues'],
+                    "Table": row['Table'],
+                    "Options": row['Options']
+                },
+                "data": row['Puzzle']
+            }
     
-    def impute(self, new_puzzle: str) -> pd.DataFrame:
+    def impute(self, metadata: dict, new_puzzle: str) -> pd.DataFrame:
         new_row = pd.DataFrame({
-            "Grid": [self.grid],
-            "Difficulty": [self.difficulty],
+            "Grid": [metadata['Grid']],
+            "Difficulty": [metadata['Difficulty']],
             "Story": [""],
             "Clues": [""],
             "Table": [""],

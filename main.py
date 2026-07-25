@@ -17,7 +17,7 @@ load_dotenv()
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8080/v1")
-llm = ChatOpenAI(model_name=MODEL_NAME, api_key=API_KEY, base_url=BASE_URL)
+llm = ChatOpenAI(model_name=MODEL_NAME, api_key=API_KEY, base_url=BASE_URL, max_tokens=8192)
 
 
 class DataEnricher(TypedDict):
@@ -35,12 +35,25 @@ class VerifyResult(BaseModel):
 
 def create_synonym_problem(state: DataEnricher) -> DataEnricher:
     prompt = [
-        SystemMessage(content="You are a helpful assistant that enriches data by creating similar problems provided in the example."),
-        HumanMessage(content="Create a similar problem to this example: " + state['example'])
+        SystemMessage(
+            content=(
+                "You are a helpful assistant that enriches data by creating similar problems provided in the example. "
+                "Output ONLY the problem text itself. Do not include any conversational openings (like 'Sure, here is...'), "
+                "do not include solutions, and do not include any hints or tips."
+            )
+        ),
+        HumanMessage(
+            content=(
+                "Create a similar problem to this example: " + state['example'] + "\n"
+                "Try changing the wording, the problem setting, etc. "
+                "Remember to output strictly the problem statement and nothing else."
+            )
+        )
     ]
     llm_response = llm.invoke(prompt)
     return {
-        "producer": llm_response.content
+        "producer": llm_response.content,
+        "example": state['example']
     }
 
 
@@ -76,11 +89,12 @@ def build_graph() -> StateGraph:
     graph = StateGraph(DataEnricher)
     graph.add_node("create", create_synonym_problem)
     graph.add_node("verify", verify_synonym_problem)
-    graph.add_node("correct", correct_synonym_problem)
+    graph.add_node("correct_it", correct_synonym_problem)
     graph.add_edge(START, "create")
     graph.add_edge("create", "verify")
-    graph.add_conditional_edges("verify", route_verify, {"end": END, "correct": "correct"})
-    graph.add_edge("correct", "verify")
+    graph.add_conditional_edges("verify", route_verify, {"end": END, "correct": "correct_it"})
+    # graph.add_edge("correct_it", "verify")  # This line is commented out to prevent infinite loops in the graph.
+    graph.add_edge("correct_it", END)
     return graph
 
 
@@ -88,20 +102,20 @@ def build_graph() -> StateGraph:
 def main(cfg: DictConfig):
     obj = DataFactoryRegistry.get_data_loader(cfg.data_type)()
     graph = build_graph().compile()
-    for __ in range(cfg.epochs):
-        example = obj.load_data()
-        initial_state: DataEnricher = {
-            "example": example,
-            "producer": "",
-            "verifier": "",
-            "corrected": "",
-            "is_verified": False,
-        }
-        result = graph.invoke(initial_state)
-        dummy_example = result['producer']
-        if result['is_verified'] == 'correct':
-            dummy_example = result['corrected']
-        obj.impute(dummy_example)
+    for _ in range(cfg.epochs):
+        for row in obj.iterate():
+            initial_state: DataEnricher = {
+                "example": row['data'],
+                "producer": "",
+                "verifier": "",
+                "corrected": "",
+                "is_verified": False,
+            }
+            result = graph.invoke(initial_state)
+            dummy_example = result['producer']
+            if not result['is_verified']:
+                dummy_example = result['corrected']
+            obj.impute(row['metadata'], dummy_example)
 
 
 if __name__ == "__main__":
