@@ -1,2 +1,3 @@
 data_type: 'grid-puzzle'
 epochs: 1
+mode: 'easy'

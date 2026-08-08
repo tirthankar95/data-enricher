@@ -46,7 +46,7 @@ def create_synonym_problem(state: DataEnricher) -> DataEnricher:
             content=(
                 "Create a similar problem to this example: " + state['example'] + "\n"
                 "Try changing the wording, the problem setting, etc. "
-                "Remember to output strictly the problem statement and nothing else."
+                "Remember to output strictly the problem statement and nothing else.\n/no_think"
             )
         )
     ]
@@ -85,23 +85,30 @@ def route_verify(state: DataEnricher) -> Literal["end", "correct"]:
     return "end" if state.get("is_verified", False) else "correct"
 
 
-def build_graph() -> StateGraph:
+def build_graph(cfg: DictConfig) -> StateGraph:
     graph = StateGraph(DataEnricher)
-    graph.add_node("create", create_synonym_problem)
-    graph.add_node("verify", verify_synonym_problem)
-    graph.add_node("correct_it", correct_synonym_problem)
-    graph.add_edge(START, "create")
-    graph.add_edge("create", "verify")
-    graph.add_conditional_edges("verify", route_verify, {"end": END, "correct": "correct_it"})
-    # graph.add_edge("correct_it", "verify")  # This line is commented out to prevent infinite loops in the graph.
-    graph.add_edge("correct_it", END)
+    if cfg.mode == "easy":
+        graph.add_node("create", create_synonym_problem)
+        graph.add_node("verify", verify_synonym_problem)
+        graph.add_edge(START, "create")
+        graph.add_edge("create", END)
+    else:
+        graph.add_node("create", create_synonym_problem)
+        graph.add_node("verify", verify_synonym_problem)
+        graph.add_node("correct_it", correct_synonym_problem)
+        graph.add_edge(START, "create")
+        graph.add_edge("create", "verify")
+        graph.add_conditional_edges("verify", route_verify, {"end": END, "correct": "correct_it"})
+        # graph.add_edge("correct_it", "verify")  # This line is commented out to prevent infinite loops in the graph.
+        graph.add_edge("correct_it", END)
     return graph
 
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg: DictConfig):
     obj = DataFactoryRegistry.get_data_loader(cfg.data_type)()
-    graph = build_graph().compile()
+    graph = build_graph(cfg).compile()
+    f_out = open("log.txt", "w")
     for _ in range(cfg.epochs):
         for row in obj.iterate():
             initial_state: DataEnricher = {
@@ -113,8 +120,11 @@ def main(cfg: DictConfig):
             }
             result = graph.invoke(initial_state)
             dummy_example = result['producer']
-            if not result['is_verified']:
+            if cfg.mode == "hard" and not result['is_verified']:
                 dummy_example = result['corrected']
+            elif cfg.mode == "easy":
+                dummy_example = result['producer']
+            print(f'Original: {row["data"]},\nDummy: {dummy_example}', file=f_out)
             obj.impute(row['metadata'], dummy_example)
 
 
