@@ -66,6 +66,19 @@ def main() -> None:
     }, ensure_ascii=False, indent=2)
     return res 
 
+
+def extract_options(row: pd.Series) -> str:
+    puzzle = row['Puzzle']
+    mx_options = int(row['Grid'].split('x')[0]) - 1
+    lines = puzzle.split('\n')
+    new_lines = []
+    for line in lines:
+        if line != '':
+            new_lines.append(line)
+    lines = new_lines[::-1]
+    return '\n'.join(lines[:mx_options])
+
+
 def impute(res):
     df = pd.read_csv('data/grid-puzzles-ordered.csv')
     data = json.loads(res)
@@ -99,6 +112,7 @@ def impute(res):
             'Difficulty': row['Difficulty'],
             'Story': story_match.group(1).strip() if story_match else None,
             'Clues': clue_match.group(1).strip() if clue_match else None,
+            'Options': extract_options(row),
             'Puzzle': puzzle,
         })
     new_df = pd.DataFrame(new_rows)
